@@ -124,25 +124,24 @@ production integrations. Purchasing a domain early is optional, not a QA prerequ
 [Local-first QA guide](docs/local-first-qa.md) describes that progression and the
 checks that still need a staging or production-like environment.
 
-## SRE portfolio focus
+## Design trade-offs
 
-The engineering story is resource budgeting, reproducible jobs, explicit lifecycle
-states, safe handling of uncertainty, version verification and usable runbooks.
-Document failures and trade-offs as well as the successful run. Do not label this
-"production-grade", "full QA for any app" or "high availability" without evidence.
+- **One job at a time:** predictable resource use rather than a highly available runner fleet.
+- **Fresh environments:** less state leakage, at the cost of downloading and installing dependencies again.
+- **Stop on uncertainty:** interrupted jobs need operator review rather than an automatic retry.
+- **Trusted workloads:** VM isolation limits exposure but is not a hostile-code security guarantee.
+- **Explicit evidence:** CI results describe the checks that ran, not complete product or release readiness.
 
-### Before a runnable release
+### Roadmap
 
-- [x] Document the purpose, tools, hardware assumptions and security boundaries.
-- [x] Keep the private application and operational state outside this preview.
-- [x] Review the six-file documentation package and obtain owner approval to publish it.
-- [ ] Generalize and review the runner/provisioning code and add lifecycle tests.
+- [x] Document requirements, reference results and security boundaries.
+- [ ] Package configurable runner/provisioning code with lifecycle tests.
 - [ ] Add a synthetic demo app, manual workflow and asserted browser journeys.
 - [ ] Add an architecture diagram and a clean-machine operator runbook.
-- [ ] Verify installation on a second machine, physical reboot and interrupted-job recovery.
-- [ ] Choose a licence before inviting reuse; review new code and artifacts before releasing them.
+- [ ] Validate installation on a second machine, physical reboot and interrupted-job recovery.
+- [ ] Select a licence for reuse.
 
-No licence grant has been added yet. Public visibility is not a claim that this
-preview is licensed as an open-source software distribution.
+## Licence
 
-Nothing in this preview changes an existing runner, dispatches a job or deploys an application.
+No licence grant is currently included. This is a documentation preview, not an
+open-source software release.
