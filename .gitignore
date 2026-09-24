@@ -1,0 +1,33 @@
+# Credentials and generated registration/configuration; never publish VM state.
+.env
+.env.*
+*.pem
+*.key
+id_rsa*
+id_ed25519*
+.runner
+.credentials*
+*_known_hosts
+user-data
+meta-data
+
+# Disks, cloud-init seeds and operational evidence are private.
+*.qcow2
+*.img
+*.iso
+*.vdi
+*.vmdk
+*.log
+/private/
+/state/
+/artifacts/
+/logs/
+/backups/
+
+# Local tooling and dependency caches.
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+node_modules/
+.DS_Store
