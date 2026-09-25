@@ -33,6 +33,10 @@ The results are not a benchmark for a 16-GB host.
 | Controller and hook checks | 11 controller tests and two hook-contract tests passed |
 | Workflow checks | Manual-only routing, self-hosted labels and runtime configuration passed validation |
 
+This was a conventional CI run, not a Jev-guided exploration run. No Jev browser
+coverage, latency or cost result is included in these totals. That layer is described
+separately in the [planned Jev integration](jev-qa.md).
+
 The successful run followed two setup fixes. Both were found by the real workflow,
 not by changing application assertions to make the suite pass.
 
@@ -92,6 +96,7 @@ two descriptions of the same failure.
 | Physical-host reboot | Service stop/start tested; unattended recovery after a real reboot still pending |
 | Smaller hardware and other operating systems | Not tested |
 | Browser journeys | Chromium installed; complete journey coverage not established |
+| Jev-guided exploration | Planned; adapter, assertion controls and comparative coverage/cost evaluation pending |
 | Load and security testing | Not completed |
 | Production deployment and recovery | Outside this CI validation run |
 

@@ -106,11 +106,25 @@ Pick tools that match your stack rather than installing every tool in this table
 | Secret detection | A dedicated secret scanner in a separate check |
 | Local service orchestration | Docker Compose, if the application uses it |
 | Load testing | k6 or another load generator against an isolated target |
+| Adaptive browser exploration (planned) | Jev through TypeSafe, with Playwright executing permitted actions |
 
 The completed prototype run exercised the Python library/web suites and pip-audit.
 Chromium was installed, but full browser-journey coverage and load testing are still
 open work. GitHub service containers did not require Docker Compose. No paid scanner
 or AI service is required for the basic setup.
+
+### Additional requirements for the planned Jev layer
+
+Jev-guided exploration would add a TypeSafe API client, authenticated direct service
+access, an explicit inference budget and a Playwright adapter with permitted actions
+and fixtures. Credentials would be supplied only to an enabled test run, not stored
+in the guest baseline. An unavailable service would stop the Jev stage rather than
+switch to another provider.
+
+Jev inference runs through TypeSafe's service, so this design adds no local GPU
+requirement. Page summaries sent for evaluation would contain only minimized
+synthetic test data. The adapter and its cost/coverage measurements are still to be
+implemented; see [Jev-guided QA](jev-qa.md).
 
 ## 6. Accounts and access
 

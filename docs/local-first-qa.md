@@ -57,6 +57,21 @@ Pin action commits and record runtime/dependency versions so a failure can be
 reproduced. No public application endpoint or router port forwarding is needed:
 the runner connects out to GitHub, where job results and logs are stored.
 
+## Add exploration alongside fixed tests
+
+A fixed browser script follows the path its author chose. The planned Jev layer
+would help choose the next permitted check from the page that is actually visible,
+using the current goal and prior observations. Playwright would perform the action;
+existing assertions would still decide whether the expected result occurred.
+
+For the task-form example, Jev might help select a useful route to exercise an
+untested validation branch. It would not replace the rule that an empty title must
+be rejected, invent new form data or override a failed assertion. Exploration would
+have explicit step and API-cost limits.
+
+This is a planned addition, not part of the completed CI run. The [Jev design](jev-qa.md)
+explains how to test whether it adds coverage over fixed scripts.
+
 ## Use a failure to improve the setup
 
 Find the first failed step and distinguish an application defect from a setup

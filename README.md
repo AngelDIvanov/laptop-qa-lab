@@ -7,11 +7,33 @@ virtual machine on your own hardware. Each job starts with a clean environment,
 uses temporary databases, and leaves its results in GitHub.
 
 The aim is simple: build locally, get reliable feedback, and fix the basics before
-adding a public domain and a production server.
+adding a public domain and a production server. The next layer is **Jev-guided browser
+exploration**: use TypeSafe's Jev to help select useful checks, Playwright to interact
+with the app, and ordinary test assertions to verify the results.
 
 > **Documentation preview.** These guides describe a working prototype. The runner
 > code, installer and demo application are not yet included. No workflows are shipped,
 > and GitHub Actions is disabled for this repository.
+
+## Where Jev fits
+
+[Jev](https://docs.typesafe.ai/introduction) is TypeSafe's model for typed judgments,
+not a browser or a free-form test-script generator. In the planned integration, the
+harness would give it a text summary of the page, a test goal and a list of permitted
+actions. Jev's response would help the code select the next useful interaction.
+
+| QA layer | Purpose | Prototype status |
+| --- | --- | --- |
+| Conventional tests | Repeat known assertions against a selected code revision | Library/web suites and dependency audit passed |
+| Jev-guided exploration | Adapt the next browser check to the current page and test goal | Planned; not integrated or validated in the passing CI run |
+
+Jev would guide exploration, not decide that a failed test should pass. Browser
+execution, action permissions, assertions and spending limits remain in code. The
+basic CI path works without AI; enabling Jev would require direct TypeSafe access
+and an explicit API budget.
+
+[Read the Jev exploration design](docs/jev-qa.md) for an example journey, the proposed
+control loop and the evidence needed to validate it.
 
 ## Why use a spare laptop?
 
@@ -64,6 +86,7 @@ this guest profile comfortably. Windows/macOS hosts and ARM hardware are unteste
 | --- | --- |
 | [Requirements and tools](docs/requirements.md) | Hardware checks, host software, guest dependencies and application test tools |
 | [Local-first QA](docs/local-first-qa.md) | A practical path from a local app to repeatable tests, staging and launch |
+| [Jev-guided QA](docs/jev-qa.md) | Planned adaptive browser exploration, typed decisions and deterministic assertions |
 | [Validation case study](docs/evidence.md) | Test results, failures encountered and the fixes that resolved them |
 | [Security model](docs/security.md) | Trust assumptions, VM boundaries, credentials and network access |
 
@@ -94,6 +117,7 @@ monitoring and third-party integrations need checks of their own.
 - [x] Document requirements, validation results and the security model.
 - [ ] Package configurable runner/provisioning code with lifecycle tests.
 - [ ] Add a demo application, manual workflow and browser journeys with assertions.
+- [ ] Integrate and validate bounded Jev-guided exploration through TypeSafe alongside Playwright assertions.
 - [ ] Add an architecture diagram and a clean-machine setup/runbook.
 - [ ] Validate a second machine, physical reboot and interrupted-job recovery.
 - [ ] Select a licence for reuse.

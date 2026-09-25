@@ -65,6 +65,18 @@ Retained disks and diagnostic output can contain sensitive data. Controller stat
 is lifecycle telemetry, not security attestation against a malicious guest or proof
 that application tests passed. Deployment remains a separate operation.
 
+## Planned Jev integration
+
+The [Jev exploration layer](jev-qa.md) would send selected page text and test context
+to TypeSafe. That is an additional data boundary beyond GitHub: only minimized
+synthetic state should be sent, without cookies, tokens or production records.
+
+Jev's selected option would be checked against code-defined action and origin
+allowlists before Playwright executes it. Page text would remain untrusted input,
+not permission to change policy or execute model-generated commands. Assertions
+and persistent request/cost limits would remain independent of model confidence.
+This layer is planned, not active in the validated CI setup.
+
 ## Runner lifecycle dependency
 
 Disposable disks are different from GitHub's `--ephemeral` registration model. The
