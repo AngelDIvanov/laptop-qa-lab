@@ -1,124 +1,130 @@
 # Requirements and tools
 
-These requirements describe the private reference design. They are not an installer
-or a promise that every laptop meeting the numbers can test every application.
+Start by checking the laptop, then separate the tools that belong on the host from
+those that belong inside the test VM. This guide covers the prototype's single-job
+profile: **4 vCPUs, 8 GiB RAM and an 80-GiB virtual disk**.
 
-## Hardware and capacity
+## 1. Check the hardware
 
-The reference guest has **4 vCPUs, 8 GiB RAM and an 80-GiB thin-provisioned disk**.
-Only one job runs at a time.
-
-| Resource | Practical starting requirement | Why |
+| Resource | Planning baseline | Recommended headroom |
 | --- | --- | --- |
-| CPU | x86-64 Intel/AMD, 4 logical CPUs, hardware virtualization enabled in firmware | KVM runs the guest; the host still needs CPU time. Prefer 8+ logical CPUs. |
-| Memory | 16 GB installed; at least **10 GiB `MemAvailable` at each guest launch** | The controller enforces available memory, not the number printed on the laptop. The guest consumes 8 GiB. |
-| Storage | SSD; plan for **120 GiB free** on the filesystem holding the VM | Allows for the guest disk's possible growth, baseline, provisioning files and headroom. Prefer 150 GiB+. |
-| Power | AC connected whenever a new guest starts | The reference controller refuses a battery-only launch. |
-| Networking | Stable internet and working DNS | GitHub coordination, images and dependencies are remote. No public inbound port forwarding is required. |
-| Cooling | Working fan, clear ventilation and a sound battery/charger | Sustained tests load the CPU; a damaged or overheating laptop is not suitable. |
+| CPU | x86-64 Intel/AMD, 4 logical CPUs, VT-x/AMD-V enabled in firmware | 4+ physical cores or 8+ logical CPUs |
+| RAM | 16 GB installed, with **10 GiB available at VM launch** | 24–32 GB |
+| Disk | SSD with **120 GiB free** where VM images will live | 150 GiB+ free |
+| Power | AC connected | Reliable charger, healthy battery and clear ventilation |
+| Network | Stable internet and DNS | Ethernet, or Wi-Fi that connects before desktop login |
 
-**Memory:** a 16-GB laptop with a busy desktop may fail the 10-GiB availability
-check. Close other workloads or use a lighter dedicated host. Do not blindly lower
-the guard to force an 8-GB laptop through. A smaller VM profile would need its own
-capacity tests and limits.
+These are sizing estimates for the profile, not benchmarked minimums. The tested
+host had 16 logical CPUs and roughly 30 GiB usable RAM. Larger applications can need
+more memory, disk or execution time.
 
-**Storage:** the reference controller checks for at least **20 GiB free** before
-launch and periodically during a job. That is an emergency guard, not a sensible
-installation requirement or an atomic reservation. The 80-GiB virtual disk does
-not reserve 80 GiB on the host immediately. Concurrent host workloads can still
-exhaust space; retained failure disks also accumulate. Check the actual VM-storage
-filesystem, not just total advertised SSD capacity. A "128-GB SSD" is not equivalent
-to 120 GiB free after installing the OS.
+### Memory: available is different from installed
 
-**Timing:** the reference configuration allows 30 minutes for the QA workflow,
-45 minutes for the controller's job deadline and 5 minutes for guest boot. These
-are timeout policies, not measured capacity guarantees for old hardware.
+The controller checks Linux's `MemAvailable` and requires at least 10 GiB before
+starting the 8-GiB guest. A 16-GB laptop with many desktop applications open may not
+have enough left. A dedicated or lightly loaded host is a better fit. An 8-GB host
+would need a smaller, separately tested guest configuration.
 
-## Operating systems
+### Disk: budget for growth
 
-- Reference host: Ubuntu Linux with KVM, libvirt, systemd, nftables and AppArmor.
-- Reference guest: official Ubuntu 24.04 LTS (Noble), x86-64 cloud image.
-- GitHub helper actions: verified Node24-compatible versions; use a runner version
-  meeting their documented minimum. The tested reference runner was 2.337.0.
-- Windows/macOS hosts, ARM machines and other distributions are not validated here.
+A thin disk starts small but grows as the job installs packages and writes data.
+The host needs room for that growth, the baseline image and any retained failure
+disks. Plan around **free space**, not the SSD's advertised capacity.
 
-A laptop already running Windows may be repurposed with Linux, but changing the OS
-is a separate owner decision. Back up existing data first. This draft does not
-format disks, recommend erasing another OS or claim Hyper-V/WSL compatibility.
+The controller's 20-GiB free-space threshold is a runtime stop condition. It is not
+the installation requirement and does not reserve space against other host workloads.
+A 128-GB SSD will generally not provide the 120 GiB free required by this estimate
+once an operating system is installed.
 
-## Required host tools
+### Time limits
 
-| Tool | Purpose |
+The prototype allows 5 minutes for guest boot, 30 minutes for the QA workflow and
+45 minutes for the controller's job deadline. A slower laptop or larger suite may
+need a different, measured configuration.
+
+## 2. Use a compatible host
+
+The tested setup uses Ubuntu Linux with KVM, libvirt, systemd, nftables and AppArmor.
+The guest is the official x86-64 Ubuntu 24.04 LTS cloud image. Windows/macOS hosts,
+ARM devices and other distributions have not been validated.
+
+Repurposing a Windows laptop with Linux is an option, but back up existing data
+before changing its operating system. There is no WSL or Hyper-V setup supplied here.
+
+## 3. Host tools
+
+The host manages the VM; it does not run the application's service containers.
+
+| Tool | Job |
 | --- | --- |
-| QEMU/KVM | Hardware-accelerated virtual machine execution |
-| libvirt daemon and `virsh` | VM/network definitions, power state and lifecycle control |
-| `virt-install` | Initial guest definition and provisioning |
-| `qemu-img` | Baseline and per-job qcow2 disk operations |
-| `genisoimage` | Non-secret cloud-init seed image in the reference design |
-| `nft` / nftables | Dedicated guest network restrictions |
-| systemd, `systemctl`, `journalctl`, `systemd-inhibit` | Services, logs and sleep/lid inhibition while active |
-| Python 3 | Controller and provisioning helpers |
-| OpenSSH | Owner-controlled administration; use host-key verification |
-| `curl`, CA certificates, `gpgv`, official Ubuntu signing keys, `sha256sum`, `tar` | Download verification and trusted image/runner preparation |
+| QEMU/KVM | Run a hardware-accelerated VM |
+| libvirt and `virsh` | Manage domains, networks and guest power state |
+| `virt-install` | Create the initial guest definition |
+| `qemu-img` | Create and inspect qcow2 baselines and writable overlays |
+| `genisoimage` | Build the cloud-init seed image |
+| nftables (`nft`) | Apply guest network restrictions |
+| systemd, `journalctl`, `systemd-inhibit` | Run services, inspect logs and prevent sleep during operation |
+| Python 3 | Run the controller and provisioning helpers |
+| OpenSSH | Administer the machine and guest using verified host keys |
+| `curl`, CA certificates, `gpgv`, Ubuntu signing keys, `sha256sum`, `tar` | Download, verify and unpack images and runner releases |
 
-Package names vary by distribution. Typical Ubuntu virtualization packages include
-`qemu-kvm`, `qemu-utils`, `libvirt-daemon-system`, `libvirt-clients` and `virtinst`.
-Installing virtualization/network packages can create services and networks: review
-that on a machine with existing VMs. Do not paste an unreviewed root install script
-or replace an existing firewall to make a demo work.
+Ubuntu's virtualization packages commonly include `qemu-kvm`, `qemu-utils`,
+`libvirt-daemon-system`, `libvirt-clients` and `virtinst`. Package installation can
+start services or create networks, so check existing VMs and firewall rules before
+changing a machine that already hosts other workloads.
 
-The host does **not** need to run the application's Docker containers. Docker and
-application dependencies belong inside the dedicated guest.
+## 4. Guest tools
 
-## Required guest tools
+Inside the VM, the prototype uses:
 
-- Official Ubuntu cloud image with cloud-init for initial setup.
-- QEMU guest agent for the host's management channel.
-- Docker for disposable databases and other test services.
-- Official GitHub Actions runner, Git and its documented native dependencies.
-- The application's runtime, package manager and test dependencies.
-- Optional browser binaries and their OS dependencies for actual browser tests.
+- **cloud-init** for initial configuration.
+- **QEMU guest agent** for the host management channel.
+- **Docker** for temporary databases and service containers.
+- **Git and the official GitHub Actions runner** to receive and execute a job.
+- **The application's runtime and dependencies**, installed by its workflow.
 
-The GitHub runner supplies the runtime used for JavaScript actions. A Node24
-checkout/setup action and an application's Node/Python runtime are separate things.
-Keep action commits pinned **and** check their declared runtime; pinning an old
-commit alone does not keep it supported.
+The tested Actions runner was version 2.337.0. Action versions must be compatible
+with the installed runner. The prototype pins Node24-compatible checkout and Python
+setup actions; their JavaScript runtime is provided by the runner, independently
+of the language used by the application.
 
-For Linux Python packages from `actions/setup-python`, the reference uses a
-runner-writable `/opt/hostedtoolcache` through `AGENT_TOOLSDIRECTORY`. Its clean
-subprocess check catches missing shared-library resolution before the long suite
-starts. See [the verified failure](evidence.md).
+Python is installed under `/opt/hostedtoolcache`, selected through
+`AGENT_TOOLSDIRECTORY`. This location lets the tested shared Python build start even
+when a child process clears its environment. The [case study](evidence.md#python-could-not-start-in-a-clean-environment)
+explains the failure that led to this choice.
 
-## Application tools: choose, do not install everything
+## 5. Application test tools
 
-| Check | Example tools | Reference status |
-| --- | --- | --- |
-| Unit/library tests | pytest, or your language's test runner | Python library suite passed |
-| Web/database tests | Django test runner with temporary PostgreSQL and Redis | Web suite and migrations passed |
-| Browser journeys | Playwright plus Chromium | Browser installed; complete user-journey coverage not established |
-| Known dependency vulnerabilities | pip-audit; use an appropriate equivalent for other ecosystems | Python audit passed |
-| Secret detection | A separately reviewed, pinned secret-scanning tool | Separate manual entrypoint exists; not part of the successful QA run |
-| Local service orchestration | Docker Compose, if your application uses it | Optional; GitHub service containers did not require Compose |
-| Load testing | A bounded tool such as k6 against an isolated target | Not implemented/validated by this reference |
+Pick tools that match your stack rather than installing every tool in this table.
 
-External services should be stubbed or use explicit, bounded test accounts. Never
-point test migrations, browser flows or load tests at production by default. Paid
-scanners and AI are optional, not prerequisites.
+| Purpose | Examples |
+| --- | --- |
+| Unit tests | pytest or the language's native test framework |
+| Web/database integration tests | Django's test runner with PostgreSQL and Redis |
+| Browser journeys | Playwright and Chromium |
+| Known dependency vulnerabilities | pip-audit for Python; an equivalent scanner for other ecosystems |
+| Secret detection | A dedicated secret scanner in a separate check |
+| Local service orchestration | Docker Compose, if the application uses it |
+| Load testing | k6 or another load generator against an isolated target |
 
-## Accounts and administration
+The completed prototype run exercised the Python library/web suites and pip-audit.
+Chromium was installed, but full browser-journey coverage and load testing are still
+open work. GitHub service containers did not require Docker Compose. No paid scanner
+or AI service is required for the basic setup.
 
-You need a GitHub repository, runner-registration permission and administrator
-access to your own laptop. Use a dedicated label and trusted refs. Repository labels
-route jobs; they are not an access-control system.
+## 6. Accounts and access
 
-The GitHub web UI is enough to dispatch a manual workflow. GitHub CLI (`gh`) is an
-optional administration tool, not a reason to install a long-lived administrative
-token on the laptop. Keep credentials out of cloud-init, command history, screenshots
-and source control. The sealed runner baseline itself is credential-bearing and private.
+You need administrator access to the laptop and permission to register a runner
+with your GitHub repository. The GitHub web interface is enough to start manual
+jobs; GitHub CLI (`gh`) is useful but optional.
 
-## Read-only checks before installation
+Runner labels route work to the right machine. Repository permissions and reviewed
+workflow/code revisions establish who can use it. Credentials and network boundaries
+are covered in the [security guide](security.md).
 
-These inspect local resources; they do not install tools or change permissions:
+## Read-only readiness checks
+
+These commands inspect the machine without changing it:
 
 ```sh
 uname -m
@@ -127,22 +133,25 @@ grep -E 'MemTotal:|MemAvailable:' /proc/meminfo
 ls -l /dev/kvm
 ```
 
-After choosing an existing VM-storage directory and installing libvirt, also check:
+Expect an x86-64 architecture, enough CPUs and memory, and an available KVM device.
+Device presence alone does not confirm that your account or libvirt service can use it.
+
+Once libvirt is installed and its storage directory exists:
 
 ```sh
 df -h /var/lib/libvirt/images
 virsh --connect qemu:///system list --all
 ```
 
-Use your actual storage location. A permission error accessing KVM/libvirt may mean
-an account or service configuration problem, not an incompatible CPU. Review the
-appropriate group/service permissions; do not make `/dev/kvm` world-writable.
+Substitute your chosen image-storage directory if different. A permission error may
+require correcting group or service access; making `/dev/kvm` world-writable is not
+a suitable fix.
 
-Boot-time Wi-Fi, guest startup and sleep inhibition must be checked on the actual
-laptop. The reference's services were exercised, but its **physical host reboot
-check is still pending**.
+Finally, verify network connection, guest startup and sleep behaviour on the actual
+laptop. Service stop/start worked in the prototype; a physical host reboot remains
+on the validation checklist.
 
-## Upstream documentation
+## Further reading
 
 - [Ubuntu virtualization](https://documentation.ubuntu.com/server/how-to/virtualisation/)
 - [libvirt documentation](https://libvirt.org/docs.html)

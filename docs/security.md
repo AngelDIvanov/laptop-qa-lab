@@ -1,80 +1,74 @@
 # Security model
 
-This page describes the reference design's trust assumptions and limits. The public
-repository currently contains documentation, not an installer that applies these
-controls to your machine.
+The prototype is a single-owner QA worker for reviewed application code. Its main
+boundaries are the host, the disposable guest and GitHub. This page explains what
+those boundaries protect and where trust is still required.
 
-## Trust assumptions
+## Who can run code?
 
-The runner is intended for code and workflows reviewed by the laptop owner. It is
-not a service for executing arbitrary public pull requests or untrusted forks.
-Manual dispatch, explicit code revisions and reviewed action pins limit what runs;
-runner labels only route jobs and are not an authorization boundary.
+The laptop owner controls the repository, workflow and revision selected for a
+manual run. Runner labels direct the job to a machine; they do not authorize the
+person or code using it.
 
-Host administrators are trusted. Jobs can have administrative privileges inside
-the guest to install dependencies and run service containers. A malicious job could
-therefore access guest credentials or make network requests before its disk is
-discarded. This design is not an audited hostile-code sandbox.
+The design is not intended for arbitrary public pull requests or untrusted forks.
+Host administrators are trusted, and a job can have administrator privileges inside
+the guest to install dependencies. A malicious job could read guest-accessible
+credentials or send network requests before cleanup. This is not an audited
+hostile-code sandbox.
 
-## Host and guest isolation
+## What does the VM isolate?
 
-Application code, Docker, test databases and browsers run inside a dedicated VM.
-The reference does not share the host's:
+Application code, Docker, databases and browsers run inside the guest. The prototype
+does not mount the host's directories or physical devices, share its Docker socket,
+or forward its SSH agent. Production credentials are not supplied to the guest.
 
-- Filesystems, personal home or physical devices.
-- Docker socket or SSH agent.
-- Production credentials.
+The baseline starts read-only; each job writes to a separate overlay. Replacing the
+overlay removes ordinary files and configuration left by the previous job. It does
+not undo external side effects or eliminate hypervisor vulnerabilities. The host
+still needs patching and appropriate access controls.
 
-A fresh writable disk prevents ordinary job state from carrying into the next run.
-A protected baseline supplies the starting environment. These controls reduce
-exposure and improve repeatability; they do not eliminate hypervisor vulnerabilities
-or replace host patching and access control.
+## Where are credentials and data stored?
 
-## Credentials and test data
+The runner registration belongs to one repository and persists across guest resets.
+An enrolled baseline, its overlays and backups may contain registration credentials.
+Treat them as secret-bearing storage rather than distributable VM images. Each new
+installation needs its own registration.
 
-Use synthetic accounts and disposable test data rather than production records.
-Keep application secrets out of source control, test output and exported artifacts.
+The prototype does not need a long-lived administrative GitHub token on the host
+to recreate a guest. Test applications use synthetic records and disposable services;
+secrets should stay out of fixtures, logs and exported artifacts.
 
-The runner has a persistent, repository-scoped identity. An enrolled baseline and
-its derived disks can contain registration credentials, so they must be protected
-like other secrets—not distributed as reusable VM images. Each installation needs
-its own registration. Recreating the guest does not require storing a long-lived
-administrative GitHub token on the host in this reference design.
+GitHub stores the repository and job results. Running tests on your laptop therefore
+does not make the system air-gapped or keep every piece of data off remote services.
 
-Test execution is local, but coordination and job logs are hosted by GitHub. This
-is not an air-gapped system or a guarantee that application data stays on the laptop.
+## What network access remains?
 
-## Network boundaries
+The prototype restricts access from the guest to the host, LAN, private address
+ranges and cloud metadata endpoints, with explicit management and DNS exceptions.
+Selected production destinations are also blocked. Public HTTP(S) is available for
+GitHub and dependency downloads.
 
-The reference restricts guest access to the host, LAN, private address ranges and
-cloud metadata endpoints, with explicit management and DNS exceptions. It also
-blocks selected production addresses. Public HTTP(S) remains available for GitHub
-and dependency downloads.
+This is not a comprehensive outbound allowlist. A public production endpoint could
+still be reachable; withholding its credentials and using test-specific configuration
+remain important. Subnet overlap, IPv6 and existing firewall rules must be considered
+when applying the design to another machine.
 
-This is **not a comprehensive outbound allowlist**. A reachable public endpoint may
-still receive requests from a job. Subnet overlap, IPv6 and interaction with an
-existing host firewall need review for each installation. Production isolation also
-depends on withholding credentials and using safe test configuration.
+## What happens after a failure?
 
-## Failure handling
+| Outcome | Disk handling |
+| --- | --- |
+| Tests pass and the job completes normally | Discard the overlay after guest shutdown |
+| Tests fail but the job completes normally | Keep the failed result in GitHub; discard the overlay after shutdown |
+| Execution is interrupted or completion is uncertain | Retain the disk and stop for investigation; no automatic redispatch |
 
-After confirmed job completion and guest shutdown, the writable disk is discarded.
-A failed test can still complete this lifecycle normally; its failed result remains
-in GitHub.
+Retained disks and diagnostic output can contain sensitive data. Controller state
+is lifecycle telemetry, not security attestation against a malicious guest or proof
+that application tests passed. Deployment remains a separate operation.
 
-Interrupted or uncertain execution retains the disk and stops for operator review
-instead of automatically redispatching the job. This avoids blindly repeating
-state-changing operations. Retained disks and diagnostic output can contain sensitive
-data and need the same protection as the active environment.
+## Runner lifecycle dependency
 
-Controller status is lifecycle telemetry, not proof that tests passed or security
-attestation against a malicious guest. A green CI result is also not automatic
-approval to deploy.
-
-## Known runner limitation
-
-Disposable disks are separate from GitHub's `--ephemeral` registration model. The
-reference reuses a repository-scoped registration and runs the listener with
-`--once`. That option carries an upstream deprecation warning; a supported replacement
-needs evaluation before a runnable release. A persistent multi-job guest is not an
-equivalent fallback because it would change the isolation and cleanup model.
+Disposable disks are different from GitHub's `--ephemeral` registration model. The
+prototype keeps its repository-scoped registration and starts the listener with
+`--once`. That option carries an upstream deprecation warning and needs a supported
+replacement before a runnable release. Keeping one guest alive for multiple jobs
+would change the cleanup model, rather than being an equivalent fallback.

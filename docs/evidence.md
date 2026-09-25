@@ -1,76 +1,100 @@
-# Evidence and limitations
+# Validation case study
 
-## What was actually checked
+On **25-09-2026**, a Python/Django application completed a manual GitHub Actions
+workflow on the laptop runner. Its PostgreSQL and Redis services ran inside the
+VM. The application is not included in this repository, so the results below
+describe that installation rather than a bundled example you can run here.
 
-Reference validation date: **25-09-2026**.
+## Test environment
 
-The working reference is private. This public-facing draft shares aggregate,
-non-sensitive observations—not its source, registration state, logs or run URLs.
-Until a standalone demo is supplied, readers cannot reproduce these application
-results from this directory.
-
-| Observation | Result / scope |
+| Component | Configuration |
 | --- | --- |
-| Library tests | 278 passed; one warning reported |
-| Web tests | 1,118 passed |
-| Python dependency audit | No known vulnerabilities reported at run time |
-| Node runtime | Pinned GitHub helper actions explicitly declared Node24; old Node20 deprecation warning absent |
-| Clean Python subprocess | Passed without inheriting the parent's loader environment |
-| Runner hooks | Actual job-started and job-completed hooks passed |
-| Completed-job cleanup | Writable disk discarded; next guest had no previous workspace or started-job marker |
-| Baseline protection | Root-owned, non-writable baseline remained protected while the guest ran |
-| Local lifecycle checks | 11 controller tests and two hook-contract tests passed |
-| Workflow contracts | Manual-only, self-hosted-only routing and runtime configuration checked |
+| Host | Ubuntu Linux, x86-64, 16 logical CPUs, roughly 30 GiB usable RAM |
+| Guest | Ubuntu 24.04 LTS, 4 vCPUs, 8 GiB RAM, 80-GiB thin disk |
+| Execution | One manual GitHub Actions job at a time |
+| Job storage | Writable overlay over a protected baseline |
+| Application services | Temporary PostgreSQL and Redis containers |
 
-The reference used a 4-vCPU, 8-GiB guest on an x86-64 laptop with 16 logical CPUs and
-roughly 30 GiB usable RAM. This does **not** establish performance on the smallest
-machine described in the requirements.
+This machine had more resources than the proposed entry-level laptop profile.
+The results are not a benchmark for a 16-GB host.
 
-## Failure cases that improved the design
+## Results
 
-### Hook filenames
+| Check | Observed result |
+| --- | --- |
+| Library suite | 278 tests passed; one warning reported |
+| Web suite | 1,118 tests passed |
+| Python dependency audit | No known vulnerabilities reported at the time of the scan |
+| Clean Python subprocess | Started successfully without the parent's environment |
+| GitHub action runtime | Node24 declared by both pinned helper actions; Node20 warning absent |
+| Job hooks | Start and completion hooks both succeeded |
+| Guest reset | Used overlay discarded; fresh guest had no previous application workspace or started-job marker |
+| Baseline permissions | Remained root-owned and non-writable while the guest ran |
+| Controller and hook checks | 11 controller tests and two hook-contract tests passed |
+| Workflow checks | Manual-only routing, self-hosted labels and runtime configuration passed validation |
 
-The first real job exposed that executable hooks also needed a supported script
-suffix. Both filenames were corrected to `.sh`, and a contract check caught the
-original failure. The uncertain guest state was preserved for review rather than
-silently reused.
+The successful run followed two setup fixes. Both were found by the real workflow,
+not by changing application assertions to make the suite pass.
 
-**Lesson:** a successful synthetic lifecycle does not establish compatibility with
-the real GitHub runner's hook dispatcher.
+## Hook scripts were rejected
 
-### Clean Python subprocess
+**Symptom:** the first job stopped before checkout because GitHub rejected the
+configured hook paths.
 
-A later run reached the web suite but one test could not start Python: the dynamic
-loader could not find `libpython3.14.so.1.0` after the test cleared the environment.
-The downloaded interpreter was under a relocated tool-cache path.
+**Cause:** the scripts were executable, but their filenames lacked a supported
+script extension. The earlier synthetic lifecycle check had not exercised GitHub's
+hook dispatcher.
 
-The exact SHA-verified Python distribution reproduced that failure at the relocated
-path and passed at `/opt/hostedtoolcache`, in offline disposable containers. The
-workflow selected the canonical cache and added an early clean-environment check.
-Application assertions were not weakened to obtain a pass.
+**Fix:** rename the hooks with `.sh` suffixes and add a configuration check that
+catches the original invalid filenames. The uncertain guest disk was retained for
+inspection. A later real job confirmed both hooks executed successfully.
 
-**Lesson:** test the actual interpreter/runtime boundary, not just imports in a
-parent process with a helpful inherited environment.
+This exposed a gap between testing the controller's state transitions and testing
+the external runner API it depends on.
 
-### Node action declarations
+## Python could not start in a clean environment
 
-Earlier pinned action versions declared Node20 and were being forced onto Node24.
-Their warning was separate from the Python test failure. Updating to verified
-Node24 action commits removed the warning; it was not a replacement for fixing
-Python's loader problem.
+**Symptom:** a later run reached the web suite, but one fresh-process test failed
+with exit code 127:
 
-**Lesson:** pinning protects reproducibility, but old pins still need deliberate
-maintenance. Distinguish warnings from the step that actually failed.
+```text
+error while loading shared libraries: libpython3.14.so.1.0: cannot open shared object file
+```
 
-## Still unverified or outside scope
+**Cause:** Python had been installed beneath a relocated runner tool-cache path.
+The parent process could find its shared library through the environment; the test's
+clean child environment could not.
 
-- Independent installation from this public draft: code/demo not packaged yet.
-- Physical host reboot and readiness without a desktop login: configured, not verified.
-- The smallest proposed laptop profile and other host operating systems.
-- Complete browser-journey coverage: installing Chromium is not proof of it.
-- Exploratory/AI-driven testing, a load-test programme or a security audit.
-- High availability, multi-tenant hostile-code execution or production-scale capacity.
-- Production deployment, rollback, disaster recovery or public launch readiness.
+**Reproduction:** the exact SHA-verified Python 3.14.7 distribution failed at the
+relocated path and started successfully under `/opt/hostedtoolcache`. Both checks
+used disposable Ubuntu containers with networking disabled.
 
-A green CI suite is useful evidence for a defined revision and set of assertions.
-It must not be presented as proof that the entire product is correct or ready to launch.
+**Fix:** set `AGENT_TOOLSDIRECTORY` to the runner-writable canonical cache and add a
+clean-environment Python startup check before dependency installation. The web test
+remained unchanged and passed in the next complete workflow run.
+
+The early check now catches this runtime failure without waiting for the full suite.
+
+## A Node warning was a separate maintenance issue
+
+The earlier action pins declared Node20 even though the runner executed them with
+Node24. Checkout and Python setup succeeded, but GitHub emitted a deprecation warning.
+
+Updating the pins to verified Node24 action releases removed that warning. The
+Python shared-library fix was still needed: these were two different issues, not
+two descriptions of the same failure.
+
+## What remains to validate
+
+| Next check | Current position |
+| --- | --- |
+| Installation from this repository | Runner code and standalone demo still to be packaged |
+| Physical-host reboot | Service stop/start tested; unattended recovery after a real reboot still pending |
+| Smaller hardware and other operating systems | Not tested |
+| Browser journeys | Chromium installed; complete journey coverage not established |
+| Load and security testing | Not completed |
+| Production deployment and recovery | Outside this CI validation run |
+
+The run demonstrates that this workload can complete and that its guest can be
+replaced cleanly. Reproducing the setup on a second machine is the next portability
+check.

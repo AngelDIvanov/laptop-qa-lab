@@ -1,147 +1,103 @@
 # Laptop QA Lab
 
-**Turn a spare laptop into a repeatable QA environment before paying for production hosting.**
+**Put a spare laptop to work testing your product before you pay for production hosting.**
 
-Build your product locally. Check its behaviour in a clean environment. Fix problems
-while they are cheap to reproduce. Then make an informed decision about cloud
-hosting, a domain name and a public launch.
+Laptop QA Lab documents a GitHub Actions setup that runs tests inside a disposable
+virtual machine on your own hardware. Each job starts with a clean environment,
+uses temporary databases, and leaves its results in GitHub.
 
-This SRE portfolio project documents a laptop-based GitHub Actions setup with a
-separate KVM virtual machine and a fresh writable disk for each job. It demonstrates
-reproducible infrastructure, failure handling, resource limits and operational
-trade-offs—not a claim that automation can find every bug.
+The aim is simple: build locally, get reliable feedback, and fix the basics before
+adding a public domain and a production server.
 
-> **Status: public documentation preview—not an installable release.** The private
-> reference implementation has completed a real CI run and disposable-VM cleanup.
-> This repository does not yet include a general-purpose installer, runner
-> implementation or runnable demo app. Those need independent packaging and testing.
-> No workflows are shipped; GitHub Actions is disabled for this documentation preview.
+> **Documentation preview.** These guides describe a working prototype. The runner
+> code, installer and demo application are not yet included. No workflows are shipped,
+> and GitHub Actions is disabled for this repository.
 
-## Why start locally?
+## Why use a spare laptop?
 
-You do not need a public domain or a rented cloud server to check most application
-logic, database behaviour and browser journeys. A spare machine can run those
-checks against synthetic data without exposing the product to the public internet.
+A local development environment can hide missing dependencies, old database state
+and manual setup steps. Running the same checks in a fresh VM helps catch those
+problems before someone else tries to use the application.
 
-A repeatable local QA process helps you:
+Reusing a laptop also lets you start without renting compute for your test jobs.
+Electricity, internet, GitHub storage and any external services still have their own
+costs. GitHub coordinates the work and stores logs, so this is local execution—not
+an offline CI system.
 
-- Catch regressions before putting a release in front of users.
-- Test installation and migrations outside your development environment.
-- Exercise critical user journeys and permission boundaries, if you write those tests.
-- Check dependencies for known vulnerabilities.
-- Learn what resources the test workload needs before choosing infrastructure.
-- Collect useful failure evidence without treating a successful cleanup as a passed test.
+The runner executes tests you supply. It does not generate complete test coverage
+or decide whether your product is ready to launch.
 
-This can defer spending on hosted compute. It does **not** eliminate electricity,
-internet, storage or external-service costs. GitHub-hosted runner minutes are not
-used by jobs executed on your own machine; other GitHub billing limits still apply.
+## How a job runs
 
-**Local execution is not offline operation:** GitHub coordinates jobs and stores
-results. The machine needs internet access for GitHub and approved dependencies.
+1. Commit a reviewed version of your application to your GitHub repository.
+2. Connect the QA laptop to power and wait for its runner to show **Online**.
+3. Start a manual workflow and select the code revision to test.
+4. The VM checks out the code, prepares temporary services and runs your checks.
+5. GitHub reports the outcome. After confirmed completion and shutdown, the used
+   VM disk is discarded and a fresh guest waits for the next job.
 
-## How the reference design works
+If the laptop is off, the job queues rather than switching to hosted compute.
+An interrupted or uncertain run stops for investigation instead of being replayed
+automatically. One job runs at a time.
 
-1. Develop the application locally and commit a trusted revision to your GitHub repository.
-2. Power on the QA laptop, connect AC power and wait for its runner to be Online.
-3. Manually start the QA workflow. Select the workflow branch and the code revision separately.
-4. A dedicated VM checks out that code and creates temporary services and test data.
-5. The workflow runs the checks you configured; GitHub displays the results.
-6. After confirmed job completion and guest shutdown, the controller discards that
-   writable disk and creates a fresh waiting VM.
+## Is my laptop suitable?
 
-A completed job may contain **failed tests**. That result remains failed in GitHub,
-even though the VM can be cleaned up normally. An interrupted or uncertain lifecycle
-preserves the disk and stops for operator review; it does not automatically replay
-the job. When the laptop is off, jobs wait instead of using a hosted-runner fallback.
+The prototype gives its guest **4 vCPUs, 8 GiB RAM and an 80-GiB thin disk**.
+For that profile, use these planning requirements:
 
-This design runs one job at a time. It is not a highly available runner fleet.
+| Component | Starting point |
+| --- | --- |
+| Processor | x86-64 Intel/AMD, 4 logical CPUs, VT-x/AMD-V enabled |
+| Memory | 16 GB installed; at least **10 GiB available before the VM starts** |
+| Storage | SSD with **120 GiB free** on the VM-storage filesystem |
+| System | Ubuntu Linux with KVM/libvirt; Ubuntu 24.04 LTS guest |
+| Power and network | AC power, working cooling and stable internet |
 
-## What laptop do I need?
+A 24–32-GB machine with more CPU cores and 150 GiB+ free SSD space gives useful
+headroom. These are sizing estimates, not a tested minimum-hardware certification:
+the validation machine had roughly 30 GiB usable RAM. An 8-GB laptop cannot accommodate
+this guest profile comfortably. Windows/macOS hosts and ARM hardware are untested.
 
-For the reference **4-vCPU / 8-GiB guest / 80-GiB thin-disk** profile:
+## Read the guides
 
-| Component | Practical starting point | Preferable |
-| --- | --- | --- |
-| CPU | x86-64 Intel/AMD, 4 logical CPUs, VT-x/AMD-V enabled | 4+ physical cores; 8+ logical CPUs |
-| RAM | 16 GB installed, **at least 10 GiB `MemAvailable` before VM launch** | 24–32 GB, with little else running |
-| Disk | SSD with **120 GiB free** on the VM storage filesystem | 150 GiB+ free; room for retained failure disks |
-| OS | Ubuntu Linux host with working KVM/libvirt; Ubuntu 24.04 LTS guest | A maintained, patched installation |
-| Power/network | AC power, sound cooling, stable internet | Wired Ethernet; Wi-Fi with system-wide autoconnect |
+| Guide | What you will find |
+| --- | --- |
+| [Requirements and tools](docs/requirements.md) | Hardware checks, host software, guest dependencies and application test tools |
+| [Local-first QA](docs/local-first-qa.md) | A practical path from a local app to repeatable tests, staging and launch |
+| [Validation case study](docs/evidence.md) | Test results, failures encountered and the fixes that resolved them |
+| [Security model](docs/security.md) | Trust assumptions, VM boundaries, credentials and network access |
 
-These are **planning requirements, not a measured minimum-hardware benchmark**.
-The reference run used a substantially larger, roughly 30-GiB-usable-RAM laptop.
-An 8-GB machine is not suitable for this guest profile. The application may need more
-resources; passing a hardware checklist does not guarantee it fits the job timeout.
+## What has been tested?
 
-See [Requirements and tools](docs/requirements.md) for the enforced limits,
-installation prerequisites and checks. Windows hosts, macOS, ARM and smaller
-profiles are not validated by this reference.
+One Python/Django application completed **278 library tests, 1,118 web tests and a
+Python dependency audit**. The job hooks and disk cleanup also worked: the next
+guest had no previous application workspace.
 
-## Tools involved
+That application is not included here. The [case study](docs/evidence.md) separates
+observed results from work still to be validated, including physical-host reboot
+and installation on a second machine.
 
-- **Host:** QEMU/KVM, libvirt, virt-install, qemu-img, nftables, systemd, Python 3,
-  SSH and image/download verification tools.
-- **Guest:** Ubuntu cloud image, cloud-init, QEMU guest agent, Docker, Git and the
-  official GitHub Actions runner. The host's Docker socket is never shared.
-- **Application QA:** the project's language/runtime and test runner; optional
-  Playwright/Chromium browser journeys and ecosystem-specific dependency checks.
-- **Administration:** a GitHub repository and permission to register its runner;
-  the GitHub UI is sufficient for dispatch. GitHub CLI is optional.
+## Design choices
 
-Node24 runs the GitHub helper actions in the reference workflow. It is not a
-requirement to rewrite a Python application in Node.js or install Node on the host.
-No AI subscription or paid security scanner is required.
+- **Disposable jobs:** fewer dependencies on leftovers, at the cost of reinstalling tools.
+- **Manual execution:** the owner chooses when and which code to test.
+- **Stop on uncertainty:** recovery favours investigation over repeating side effects.
+- **Trusted code:** the VM is not an audited sandbox for arbitrary public pull requests.
+- **Separate deployment:** test results inform a release; the runner does not deploy it.
 
-## Evidence and boundaries
+Once local checks are dependable, the next step is to choose production hosting,
+configure a domain and test the real infrastructure in staging. DNS, TLS, backups,
+monitoring and third-party integrations need checks of their own.
 
-The private reference run passed **278 library tests, 1,118 web tests and a Python
-dependency audit**. Actual job hooks, disk disposal and a fresh guest without the
-previous workspace were also checked. Only aggregate, non-sensitive results are
-included here; private application code, run links and machine identities are not.
+## Roadmap
 
-Read [Evidence and limitations](docs/evidence.md). The counts are reference results,
-not tests you can currently reproduce from this documentation-only draft.
-
-A clean VM improves repeatability. It does not create missing test coverage, prove
-security or guarantee production performance. Real browser coverage must contain
-assertions about your product—not just install a browser or click around.
-
-**Trusted code only.** This is not an audited sandbox for arbitrary public pull
-requests. Read [Security and privacy](docs/security.md) before attaching a runner
-to any repository.
-
-## From laptop to online product
-
-A useful progression is:
-
-**Build locally → repeatable QA → fix failures → plan production → stage → launch.**
-
-Once the product works locally and its important checks pass, consider hosting,
-a domain, TLS, backups, observability and deployment automation. Buying these does
-not make the product ready; local tests also cannot replace testing those real
-production integrations. Purchasing a domain early is optional, not a QA prerequisite.
-
-[Local-first QA guide](docs/local-first-qa.md) describes that progression and the
-checks that still need a staging or production-like environment.
-
-## Design trade-offs
-
-- **One job at a time:** predictable resource use rather than a highly available runner fleet.
-- **Fresh environments:** less state leakage, at the cost of downloading and installing dependencies again.
-- **Stop on uncertainty:** interrupted jobs need operator review rather than an automatic retry.
-- **Trusted workloads:** VM isolation limits exposure but is not a hostile-code security guarantee.
-- **Explicit evidence:** CI results describe the checks that ran, not complete product or release readiness.
-
-### Roadmap
-
-- [x] Document requirements, reference results and security boundaries.
+- [x] Document requirements, validation results and the security model.
 - [ ] Package configurable runner/provisioning code with lifecycle tests.
-- [ ] Add a synthetic demo app, manual workflow and asserted browser journeys.
-- [ ] Add an architecture diagram and a clean-machine operator runbook.
-- [ ] Validate installation on a second machine, physical reboot and interrupted-job recovery.
+- [ ] Add a demo application, manual workflow and browser journeys with assertions.
+- [ ] Add an architecture diagram and a clean-machine setup/runbook.
+- [ ] Validate a second machine, physical reboot and interrupted-job recovery.
 - [ ] Select a licence for reuse.
 
 ## Licence
 
-No licence grant is currently included. This is a documentation preview, not an
-open-source software release.
+No licence grant is currently included.

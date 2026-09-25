@@ -1,109 +1,107 @@
-# Check the product before taking it online
+# From a local app to a public launch
 
-A public URL is not required to start building confidence in a product. Develop
-locally, automate the checks that matter, and run them in a clean environment before
-committing to a production hosting plan.
+A product can be tested before it has a public URL. Start with the application on
+`localhost`, make its checks repeatable, and use the spare laptop to run those
+checks in a clean environment. Hosting and a domain can follow once the basics work.
 
-This is a practical early-stage workflow—not a rule that infrastructure or a domain
-must never be purchased early, and not a substitute for production-readiness work.
+The workflow below is a way to organize that process. The runner packaging itself
+is still on the [project roadmap](../README.md#roadmap).
 
-## 1. Get the application working locally
+## Make a clean checkout usable
 
-Write down how to start it from a clean checkout. Identify its runtime, services,
-migrations and configuration. Use disposable databases and synthetic accounts.
-Keep secrets and real customer data out of test fixtures and Git history.
+Start with one question: could someone set up the application using only the
+repository and its instructions?
 
-You should be able to explain the application's critical journeys. For example:
+Document the runtime version, dependency installation, required services, database
+migrations and start command. Provide sample configuration without credentials and
+seed the database with synthetic records. A setup that depends on an undocumented
+manual fix will be difficult to reproduce in CI.
 
-- Can a user sign in and sign out?
-- Can they create, read, change and remove the records they are allowed to manage?
-- Are records belonging to another user inaccessible?
-- Do invalid inputs and external-service failures produce useful errors?
+## Test outcomes that matter to a user
 
-These are suggested tests, not claims about coverage already supplied by this lab.
+Choose a few important journeys and turn them into assertions. For example, a small
+task-tracking application might need these checks:
 
-## 2. Turn expectations into executable checks
+| Journey | Expected result |
+| --- | --- |
+| Create a task | The saved task appears after reloading the page |
+| Submit an empty title | A validation error appears and no task is saved |
+| Sign out | Protected pages are no longer accessible |
+| Open another user's task | Access is denied |
+| Save while a service is unavailable | A useful error appears without corrupting existing data |
 
-Use the test framework appropriate to your application:
+Cover business rules with unit tests, database/service boundaries with integration
+tests, and visible behaviour with browser tests. A browser script is useful when
+it checks the result of an action, not just whether the click completed.
 
-- **Unit tests** for application rules and edge cases.
-- **Integration tests** for database and service boundaries.
-- **Browser tests** for important visible behaviour and navigation.
-- **Dependency and secret checks** for known vulnerabilities and accidental exposure.
+For email, payments and similar integrations, use mocks or the provider's sandbox.
+That keeps routine tests repeatable without sending real messages or creating real
+transactions.
 
-Browser automation must assert an outcome: a saved record appears, an unauthorized
-request is rejected, or an expected error is visible. Opening Chromium or clicking
-a button is not, by itself, proof the feature works.
+## Move the checks into a clean job
 
-External calls should be mocked or explicitly limited to safe test environments.
-Do not repeatedly purchase, send real messages, run paid inference or mutate
-production accounts to manufacture a green result.
+Once the application has test commands, a manual GitHub workflow can run them on a
+selected commit. In this design, the QA laptop receives the job inside a dedicated
+VM and creates temporary databases there.
 
-## 3. Run a clean, repeatable QA job on the spare laptop
+A useful order is:
 
-Commit a trusted revision and start the manual GitHub workflow. The application is
-executed in a dedicated VM rather than in the laptop owner's development home.
-Temporary service containers and synthetic data are created inside that VM.
+1. Check out the selected revision and prepare its runtime.
+2. Install dependencies and verify that the runtime starts correctly.
+3. Create test services, apply migrations and load fixtures.
+4. Run unit and integration tests, followed by the configured browser journeys.
+5. Check dependencies and collect failure details.
+6. Finish the job and replace the used VM disk.
 
-A fresh disk helps expose dependencies on leftovers from earlier runs. Pin the
-inputs you can: source revision, action commits, runtime versions and dependency
-versions. Record unavoidable external dependencies instead of claiming perfect
-reproducibility.
+Pin action commits and record runtime/dependency versions so a failure can be
+reproduced. No public application endpoint or router port forwarding is needed:
+the runner connects out to GitHub, where job results and logs are stored.
 
-No public domain, public application endpoint or inbound router port is required.
-GitHub is still the remote coordinator; results and logs live there. This design is
-not an air-gapped or fully local CI service.
+## Use a failure to improve the setup
 
-## 4. Read the result, not just the final log lines
+Find the first failed step and distinguish an application defect from a setup
+problem. A missing library, unavailable database or incorrect runtime path may stop
+the test before it reaches application code.
 
-- A failed test means the job failed, even if container cleanup succeeded.
-- A passing suite means the selected checks passed against the selected revision.
-- A dependency audit with no findings means no known issues were reported by that
-  scan at that time—not that the application is vulnerability-free.
-- Inspect the first relevant failure, fix its cause, and rerun deliberately.
-- Preserve uncertain or interrupted runs for review; do not silently erase evidence
-  and replay a workload that may have produced external side effects.
+Reproduce the failure with the smallest useful check, fix its cause and keep that
+check in the workflow when it will catch the problem earlier next time. The
+[validation case study](evidence.md) shows this with a Python startup failure.
 
-The job should not deploy anything merely because tests passed.
+Successful cleanup does not change a failed test result. Likewise, an interrupted
+job may have left work unfinished; investigate it before repeating operations with
+external side effects.
 
-## 5. Decide whether to invest in hosting and a domain
+## Decide what to host
 
-Once the product works locally and the important checks are repeatable, you can
-make a more informed decision about cloud hosting, a domain and release tooling.
+With a working application and dependable checks, infrastructure decisions become
+more concrete. You know which services the app requires, how it is configured and
+how its database is initialized.
 
-Use what you learned to identify required services, storage and operational needs.
-Laptop test duration is not a production-sizing benchmark. Application latency,
-concurrency and resource use need separate, bounded measurements with a suitable
-load generator and target.
+That is a useful point to compare hosting options, estimate costs and choose a
+domain. Registering a domain earlier is fine too—it is simply not a prerequisite
+for testing application behaviour.
 
-The benefit is avoiding a situation where you are paying to keep a server online
-while still discovering basic setup and application problems. It is not a promise
-that local QA removes every reason to use cloud development or staging.
+Measure application resource use and expected traffic separately. A test suite's
+runtime on one laptop does not tell you how many production users a server can handle.
 
-## 6. Add production-like staging before launch
+## Test the deployment in staging
 
-Local results cannot validate infrastructure that has not been configured. Before
-opening the product to users, separately check:
+Local QA catches application and setup problems. Staging adds the infrastructure
+that users will actually reach:
 
-- DNS, TLS, reverse proxies and secure cookies.
-- Production configuration, IAM and secret management.
-- Real email, OAuth callbacks, webhooks and other integrations in their safe test modes.
-- Database migration, backup **and restore** procedures.
-- Deployment rollback and data compatibility.
-- Logs, metrics, alerts and useful incident diagnostics.
-- Performance under a representative, authorized load.
-- Privacy, authorization, accessibility and security review appropriate to the product.
+| Area | What to check |
+| --- | --- |
+| Public endpoint | DNS, TLS, reverse proxy behaviour and secure cookies |
+| Configuration | Production settings, service permissions and secret delivery |
+| Integrations | Email, OAuth callbacks and webhooks in safe test modes |
+| Data | Migrations, backups and a demonstrated restore |
+| Operations | Logs, metrics, alerts and a usable rollback procedure |
+| Capacity | Representative load against an isolated target |
 
-Cloud accounts, domains and production credentials belong to this separate phase.
-They are not part of the laptop runner's default permissions. A release remains an
-explicit decision rather than an automatic consequence of a green CI job.
+Keep deployment separate from the QA job. A green suite is valuable input to a
+release decision; staging confirms the parts that only exist once the product is
+hosted.
 
-## Cost and scope
-
-You reuse compute you already own, but electricity, hardware wear, network access,
-GitHub storage and external services may still cost money. The laptop is an on-demand
-QA worker, not a highly available production server.
-
-The intended progression is:
-
-**Local product → useful tests → repeatable isolated QA → production planning → staging → deliberate launch.**
+The progression is **build locally → test repeatably → fix failures → plan hosting
+→ validate staging → launch**. The laptop supplies the feedback loop, rather than
+becoming the production server.
